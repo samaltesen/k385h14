@@ -110,8 +110,10 @@ typedef struct{//input
 	       }motiontype;
 
 enum{dir_LEFT, dir_RIGHT};
-enum {mot_stop=1,mot_move,mot_turn, mot_followLine};
+enum{mot_stop=1,mot_move,mot_turn, mot_followLine, mot_followWall};
+enum{con_followWall};
 
+double acceleration = 0.1/100;
 void update_motcon(motiontype *p);
 double followLine(motiontype *p);
 void driveTurn(motiontype *p, double radius, int direction);
@@ -447,7 +449,7 @@ void update_odo(odotype *p)
 
 int dec = 0;
 void update_motcon(motiontype *p){
-
+double static currentSpeed = 0;
 double deltaSpeed;
 
 if (p->cmd !=0){
@@ -481,83 +483,59 @@ if (p->cmd !=0){
    }
 
    double maxSpeed = sqrt(2*0.1*(p->dist - ((p->right_pos+p->left_pos)/2- p->startpos)));
-   double static currentSpeed = 0;
+   
 
 
-    if(p->curcmd == mot_move) {
-      printf("Straight ");
-      if(p->motorspeed_l < p->speedcmd) {
-	  currentSpeed = p->motorspeed_l + 0.1/100;
 
-
-      }
-      if(currentSpeed > maxSpeed) {
-
-	  currentSpeed = maxSpeed;
-
-      }
-    } else if(p->curcmd == mot_turn) {
+if(p->curcmd == mot_turn) {
       printf("turning ");
-      double static iVal;
-      double e = fabs(p->angle) - fabs(odo.turnOrientation);
-      double kp = 0.04;
-      double ki = 0.01;
-      iVal = iVal + e*ki;
-      currentSpeed = kp*(e + iVal);
+      
     }
 
 
     printf("Speed: %f, max speed %f\n", currentSpeed, maxSpeed);
 
-   switch (p->curcmd){
-     case mot_stop:
-       p->motorspeed_l=0;
-       p->motorspeed_r=0;
-     break;
-     case mot_move:
-
-       if ((p->right_pos+p->left_pos)/2- p->startpos > p->dist- 0.001){
-          p->finished=1;
-	  dec = 0;
-	  p->motorspeed_l=currentSpeed;
-          p->motorspeed_r=currentSpeed;
-       }
-       else {
-	  p->motorspeed_l=currentSpeed;
-          p->motorspeed_r=currentSpeed;
-       }
-     break;
-
-     case mot_turn:
-
+    if(checkFlags) 
+    {
+      p->motorspeed_r=0;
+      p->motorspeed_l=0;
+      p->finished=1;
       
-	  if (fabs(odo.turnOrientation) < fabs(p->angle)){
-	      driveTurn(p, 1, dir_RIGHT);
-	  }
-	  else {
-	    p->motorspeed_r=0;
-            p->motorspeed_l=0;
-            p->finished=1;
-	    odo.turnOrientation = 0;
-	  }
+    } 
+    else 
+    {
+	switch (p->curcmd){
+	    case mot_stop:
+	      p->motorspeed_l=0;
+	      p->motorspeed_r=0;
+	    break;
+	    
+	    case mot_move:
+	      
+		  driveFwd(p);
+	
+	    break;
 
+	    case mot_turn:
 
-     break;
+		driveTurn(*p, dir_LEFT);
+	    
 
-     case mot_followLine:
-	printf("%s","vi er i mot_followline casen where we set motorspeed");
-       	deltaSpeed = followLine(p);
-      if(p->LineSensorIndex < lineSensorSize/2) {
-        p->motorspeed_l = p->speedcmd + deltaSpeed;
-        p->motorspeed_r = p->speedcmd - deltaSpeed;
-      } else {
-        p->motorspeed_l = p->speedcmd - deltaSpeed;
-        p->motorspeed_r = p->speedcmd + deltaSpeed;
-      }
+	    break;
 
-	break;
+	    case mot_followLine:
 
-   }
+		driveLine(*p);
+	    
+	    break;
+	    
+	    case mot_followWall;
+	      
+		driveWall(0.2, *p);
+
+	    break;
+	}
+    }
 }
 
 
@@ -595,6 +573,12 @@ void lineCalibration(int lineSensor[]){
     lineSensorCal[i] = (lineSensor[i]-b[i])/a[i];
   }
 }
+
+void irCalibration()
+{
+
+}
+
 /*find the smalles value of the line sensor
 */
 double minLineSensor(double calLineSensor[]) {
@@ -638,6 +622,22 @@ int turn(double angle, double speed,int time){
      return mot.finished;
 }
 
+void followWall(double speed, int time, int con) 
+{
+  if(time == 0) 
+  {
+    mot.speedcmd = speed; 
+    mot.cmd = mot_followWall;
+    mot.condition = con;
+    return 0;
+  }
+  else 
+  {
+    return mot.finished;
+  }
+}
+
+
 
 void sm_update(smtype *p){
   if (p->state!=p->oldstate){
@@ -649,6 +649,70 @@ void sm_update(smtype *p){
    }
 }
 
+void driveFwd(motiontype *p) 
+{
+    double speed = 0;
+    double maxSpeed = sqrt(2*acceleration*(p->dist - ((p->right_pos+p->left_pos)/2- p->startpos)));
+    
+    if(p->motorspeed_l < p->speedcmd) 
+    {
+	speed = p->motorspeed_l + acceleration;
+    }
+    if(currentSpeed > maxSpeed) 
+    {
+	speed = maxSpeed;
+    }
+  
+   p->motorspeed_l = speed;
+   p->motorspeed_r = speed;
+}
+
+void driveTurn(motiontype *p, int direction) 
+{
+  double speed;
+  double static iVal;
+  double e = fabs(p->angle) - fabs(odo.turnOrientation);
+  double kp = 0.04;
+  double ki = 0.01;
+  
+  iVal = iVal + e*ki;
+  speed = kp*(e + iVal);
+  
+  
+  if (direction == dir_LEFT){
+    p->motorspeed_l = 0;
+    
+    if (fabs(odo.turnOrientation) < fabs(p->angle))
+    {
+	p->motorspeed_r = speed;
+	p->motorspeed_l = speed * -1;
+    }
+    else 
+    {
+      p->motorspeed_r = 0;
+      p->motorspeed_l = 0;
+      p->finished = 1;
+      odo.turnOrientation = 0;
+    }
+  }
+  else if (direction == dir_RIGHT) 
+  {
+    p->motorspeed_r=0;
+    if (fabs(odo.turnOrientation) < fabs(p->angle))
+    {
+	p->motorspeed_l = speed;
+	p->motorspeed_r = speed*-1;
+    }
+    else 
+    {
+      p->motorspeed_r=0;
+      p->motorspeed_l=0;
+      p->finished=1;
+      odo.turnOrientation = 0;
+    }
+  }
+}
+
 void driveTurn(motiontype *p, double radius, int direction) 
 {
     double centerDistance;
@@ -657,6 +721,17 @@ void driveTurn(motiontype *p, double radius, int direction)
     double rightWheelRadius;
     double leftWheelDistance;
     double rightWheelDistance;
+    
+    /*
+    double speed;
+    double static iVal;
+    double e = fabs(p->angle) - fabs(odo.turnOrientation);
+    double kp = 0.04;
+    double ki = 0.01;
+    
+    iVal = iVal + e*ki;
+    speed = kp*(e + iVal);
+    */
     
     centerDistance = radius * p->angle;
     turnTime = centerDistance/p->speedcmd;
@@ -681,4 +756,38 @@ void driveTurn(motiontype *p, double radius, int direction)
     }
     
   
+}
+
+void driveLine(motiontype *p) 
+{
+    double deltaSpeed = followLine(p);
+    if(p->LineSensorIndex < lineSensorSize/2) 
+    {
+      p->motorspeed_l = p->speedcmd + deltaSpeed;
+      p->motorspeed_r = p->speedcmd - deltaSpeed;
+    } 
+    else 
+    {
+      p->motorspeed_l = p->speedcmd - deltaSpeed;
+      p->motorspeed_r = p->speedcmd + deltaSpeed;
+    }
+}
+
+void driveWall(double distToWall, motiontype *p)
+{
+    if(irDistLeft > distToWall) 
+    {
+	p->motorspeed_l = p->speedcmd - deltaSpeed;
+	p->motorspeed_r = p->speedcmd + deltaSpeed;
+    } 
+    else if ( irDistLeft < distToWall)
+    {
+	p->motorspeed_l = p->speedcmd + deltaSpeed;
+	p->motorspeed_r = p->speedcmd - deltaSpeed;
+    } 
+    else
+    {
+      p->motorspeed_l = p->speedcmd;
+      p->motorspeed_r = p->speedcmd;
+    }
 }
