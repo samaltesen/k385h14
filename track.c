@@ -30,6 +30,7 @@ struct {
 } gmk;
 double visionpar[10];
 double laserpar[10];
+double Irdata[3];
 
 void serverconnect(componentservertype *s);
 void xml_proc(struct xml_in *x);
@@ -38,6 +39,7 @@ void lineCalibration(int lineSensor[]);
 double minLineSensor(double calLinesSensor[]);
 float followLineCenterGB();
 float followLineCenterGW();
+void irCalibration(int irSensor[]);
 
 
 componentservertype lmssrv,camsrv;
@@ -115,7 +117,7 @@ typedef struct{//input
 
 enum{dir_LEFT, dir_RIGHT};
 enum{mot_stop=1,mot_move,mot_turn, mot_followLine, mot_followWall};
-enum {con_crossingBlackLine, con_FindBlackLine, con_driveDist, con_laserScan, con_followWall};
+enum {con_crossingBlackLine, con_FindBlackLine, con_driveDist, con_laserScan, con_followWall, con_irScan};
 enum {bl, bm, br};
 
 
@@ -587,6 +589,15 @@ int checkFlags(motiontype *p) {
 	}
 	return 0;
 	break;
+	
+      case con_irScan:
+	irCalibration(irsensor->data);
+	for(i = 0; i < 3; i++) {
+	  if(Irdata[i] < p->dist && Irdata[i] > 0) {
+	    return 1;
+	  }
+	}
+      break;
     }
     return 0;
 }
@@ -902,4 +913,11 @@ double minLineSensor(double calLineSensor[]) {
   return index;
 }
 
-
+void irCalibration(int irSensor[]){
+  double k[3][2] = {{12.1861, 95.3362}, {15.7048, 81.2395}, {16.7025, 65.1425}};
+  int i;
+  for(i = 0; i < 3; i++) {
+    Irdata[i] = k[i][0]/(irSensor[i]-k[i][1]);
+  }
+  printf("%s%f%s%f%s%f%s","result:",Irdata[0],";",Irdata[1],";",Irdata[2],"\n");
+}
