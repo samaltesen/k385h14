@@ -22,7 +22,6 @@
 #include "componentserver.h"
 #include "xmlio.h"
 
-
 struct xml_in *xmldata;
 struct xml_in *xmllaser;
 struct {
@@ -36,6 +35,8 @@ void xml_proc(struct xml_in *x);
 void xml_proca(struct xml_in *x);
 void lineCalibration(int lineSensor[]);
 double minLineSensor(double calLinesSensor[]);
+float followLineCenterGB();
+float followLineCenterGW();
 
 
 componentservertype lmssrv,camsrv;
@@ -105,22 +106,24 @@ typedef struct{//input
 		int finished;
 		// internal variables
 		double startpos, startpos2;
+		int condition;
+		double linechoice;
     double lineSensorOld;
     int LineSensorIndex;
 	       }motiontype;
 
-enum{dir_LEFT, dir_RIGHT};
-enum{mot_stop=1,mot_move,mot_turn, mot_followLine, mot_followWall};
-enum{con_followWall};
+enum {mot_stop=1,mot_move,mot_turn, mot_followLine};
+enum {con_crossingBlackLine, con_FindBlackLine, con_driveDist, con_laserScan};
+enum {bl, bm, br};
 
-double acceleration = 0.1/100;
 void update_motcon(motiontype *p);
 double followLine(motiontype *p);
-void driveTurn(motiontype *p, double radius, int direction);
+int checkFlags(motiontype *p);
+void FollowLinemotorControl(motiontype *p);
 
 int fwd(double dist, double speed,int time);
 int turn(double angle, double speed,int time);
-int followLine2(double dist, double speed,int time);
+int followLine2(int lineType, double dist,int con, double speed,int time);
 
 
 
@@ -145,11 +148,12 @@ int lineSensorSize = 8;
 float datalog[10000][9];
 char datalog2[10000];
 float laserlog[10000][10];
+float CenterOfGravity[10000];
 double lineSensorCal[8];
 int count = 0;
 FILE * missionState;
 
-enum {ms_init,ms_fwd,ms_turn,ms_followWal,ms_end};
+enum {ms_init,ms_fwd,ms_turn,ms_end};
 
 int main()
 {
@@ -287,11 +291,11 @@ while (running){
 
    switch (mission.state) {
      case ms_init:
-       //mission.state=mot_followLine;
-	printf("%s","vi er i mission.state= ms_init");
+       mission.state=mot_followLine;
+	//printf("%s","vi er i mission.state= ms_init");
        //n=4; dist=2;angle=-90.0/180*M_PI;
-       angle=90.0/180*M_PI;
-       mission.state= ms_turn;
+       //n=4; dist=2;angle=90.0/180*M_PI;
+       //mission.state= ms_fwd;
      break;
 
      case ms_fwd:
@@ -301,11 +305,21 @@ while (running){
 
      case ms_turn:
        if (turn(angle,0.3,mission.time)){
-
+         n=n-1;
+    	 if (n==0)
     	   mission.state=ms_end;
+       else
+    	    mission.state=ms_fwd;
+  	   }
+       break;
+
+     case mot_followLine:
+	//printf("%s","we are in the mot_followLine Case of mission \n");
+       if (followLine2(bl,0.25,con_laserScan,0.3,mission.time)) {
+	 mission.state=ms_end;
+	 printf("%s%f%s","distance to box: ",(-1*odo.yOld)+0.255+laserpar[4],"\n");
        }
-       
-     break;
+        break;
 
      case ms_end:
        mot.cmd=mot_stop;
@@ -363,16 +377,15 @@ for(i = 0; i < count; i++) {
   //fprintf(missionState, "%s%f%s%f",";",datalog[i][6],";",datalog[i][7]);
   //print direction
   //fprintf(missionState, "%s%f",";",datalog[i][8]);
-  int j;
+  //print the center of gravity that is calculated
+  fprintf(missionState, "%s%f",";",CenterOfGravity[i]);
+  //Print the laser data
+  /*int j;
   fprintf(missionState, "%s%f",";",laserlog[i][0]);
   for(j = 1; j < 10; j++) {
     fprintf(missionState, "%s%f",";",laserlog[i][j]);
-  }
+  }*/
   fprintf(missionState, "%s","\n");
-
-
-  //fprintf(missionState, "%i%s%f%s%f%s%f%s%i%s%f%s%f%s%f%s%f%s%f%s" ,i,";",datalog[i][1],";",datalog[i][2],";",datalog[i][3],";",
-	  //datalog2[i],";",datalog[i][4],";",datalog[i][5],";",datalog[i][6],";",datalog[i][7],";",datalog[i][8],"\n");
 }
 fclose(missionState);
   speedl->data[0]=0;
@@ -449,8 +462,6 @@ void update_odo(odotype *p)
 
 int dec = 0;
 void update_motcon(motiontype *p){
-double static currentSpeed = 0;
-double deltaSpeed;
 
 if (p->cmd !=0){
 
@@ -476,6 +487,11 @@ if (p->cmd !=0){
          p->curcmd=mot_turn;
        break;
 
+       case mot_followLine:
+	 p->startpos=(p->left_pos+p->right_pos)/2;
+         p->curcmd=mot_followLine;
+       break;
+
 
      }
 
@@ -483,59 +499,153 @@ if (p->cmd !=0){
    }
 
    double maxSpeed = sqrt(2*0.1*(p->dist - ((p->right_pos+p->left_pos)/2- p->startpos)));
-   
+   double static currentSpeed = 0;
 
 
+    if(p->curcmd == mot_move) {
+      printf("Straight ");
+      if(p->motorspeed_l < p->speedcmd) {
+	  currentSpeed = p->motorspeed_l + 0.1/100;
 
-if(p->curcmd == mot_turn) {
+
+      }
+      if(currentSpeed > maxSpeed) {
+
+	  currentSpeed = maxSpeed;
+
+      }
+    } else if(p->curcmd == mot_turn) {
       printf("turning ");
-      
+      double static iVal;
+      double e = fabs(p->angle) - fabs(odo.turnOrientation);
+      double kp = 0.04;
+      double ki = 0.01;
+      iVal = iVal + e*ki;
+      currentSpeed = kp*(e + iVal);
     }
 
 
-    printf("Speed: %f, max speed %f\n", currentSpeed, maxSpeed);
+    //printf("Speed: %f, max speed %f\n", currentSpeed, maxSpeed);
 
-    if(checkFlags) 
-    {
-      p->motorspeed_r=0;
-      p->motorspeed_l=0;
-      p->finished=1;
-      
-    } 
-    else 
-    {
-	switch (p->curcmd){
-	    case mot_stop:
-	      p->motorspeed_l=0;
-	      p->motorspeed_r=0;
-	    break;
-	    
-	    case mot_move:
-	      
-		  driveFwd(p);
-	
-	    break;
+   switch (p->curcmd){
+     case mot_stop:
+       p->motorspeed_l=0;
+       p->motorspeed_r=0;
+     break;
+     case mot_move:
 
-	    case mot_turn:
+       if ((p->right_pos+p->left_pos)/2- p->startpos > p->dist- 0.001){
+          p->finished=1;
+	  dec = 0;
+	  p->motorspeed_l=currentSpeed;
+          p->motorspeed_r=currentSpeed;
+       }
+       else {
+	  p->motorspeed_l=currentSpeed;
+          p->motorspeed_r=currentSpeed;
+       }
+     break;
 
-		driveTurn(*p, dir_LEFT);
-	    
+     case mot_turn:
 
-	    break;
-
-	    case mot_followLine:
-
-		driveLine(*p);
-	    
-	    break;
-	    
-	    case mot_followWall;
-	      
-		driveWall(0.2, *p);
-
-	    break;
+       if (p->angle>0){
+          p->motorspeed_l=0;
+	  if (fabs(odo.turnOrientation) < fabs(p->angle)){
+	      p->motorspeed_r=currentSpeed;
+	      p->motorspeed_l=currentSpeed*-1;
+	  }
+	  else {
+            p->motorspeed_r=0;
+	    p->motorspeed_l=0;
+            p->finished=1;
+	    odo.turnOrientation = 0;
+	  }
 	}
+	else {
+          p->motorspeed_r=0;
+	  if (fabs(odo.turnOrientation) < fabs(p->angle)){
+	      p->motorspeed_l=currentSpeed;
+	      p->motorspeed_r=currentSpeed*-1;
+	  }
+	  else {
+	    p->motorspeed_r=0;
+            p->motorspeed_l=0;
+            p->finished=1;
+	    odo.turnOrientation = 0;
+	  }
+	}
+
+     break;
+
+     case mot_followLine:
+	//printf("%s","vi er i mot_followline casen where we set motorspeed");
+      if(checkFlags(p) == 1) {
+	p->finished=1;
+	dec = 0;
+	p->motorspeed_l=currentSpeed;
+        p->motorspeed_r=currentSpeed;
+      }else {
+	FollowLinemotorControl(p);
+      }
+	break;
+
+   }
+}
+//con_crossingBlackLine,con_FindBlackLine,con_driveDist
+int checkFlags(motiontype *p) {
+  int i;
+    switch (p->condition){
+      case con_crossingBlackLine:
+	for(i = 0; i < 8; i++) {
+	  if((1-lineSensorCal[i]) > 0.1) {
+	    return 0;
+	  }
+	}
+	return 1;
+      break;
+	
+      case con_FindBlackLine:
+	for(i = 0; i < 8; i++) {
+	  if((1-lineSensorCal[i]) > 0.1) {
+	    return 1;
+	  }
+	}
+	return 0;
+      break;
+      
+      case con_driveDist:
+	if((p->right_pos+p->left_pos)/2- p->startpos > p->dist- 0.001) {
+	  return 1;
+	}
+	return 0;
+      break;
+      
+      case con_laserScan:
+	for(i = 0; i < 10; i++) {
+	  if(laserpar[i] < p->dist && laserpar[i] > 0) {
+	    return 1;
+	  }
+	}
+	return 0;
+	break;
     }
+    return 0;
+}
+
+void FollowLinemotorControl(motiontype *p) {
+  double deltaSpeed = followLine(p)*15;
+  float index = followLineCenterGB();
+  CenterOfGravity[count] = index;
+  if(index < 4.5+p->linechoice) {
+    p->motorspeed_l = p->speedcmd - deltaSpeed;
+    p->motorspeed_r = p->speedcmd + deltaSpeed;
+  }else if(index > 4.5+p->linechoice) {
+    p->motorspeed_l = p->speedcmd + deltaSpeed;
+    p->motorspeed_r = p->speedcmd - deltaSpeed;
+  }else {
+    p->motorspeed_l = p->speedcmd;
+    p->motorspeed_r = p->speedcmd;
+  }  
 }
 
 
@@ -551,12 +661,26 @@ int fwd(double dist, double speed,int time){
      return mot.finished;
 }
 
-int followLine2(double dist, double speed,int time){
-
+int followLine2(int lineType, double dist,int con, double speed,int time){
+  //printf("time=0");
   if (time==0){
+	//printf("time=0");
      mot.speedcmd=speed;
-     mot.cmd=mot_move;
+     mot.cmd=mot_followLine;
+     mot.condition = con;
      mot.dist=dist;
+     switch (lineType){
+      case bl:
+	mot.linechoice = -0.15;
+      break;
+      case bm:
+	mot.linechoice = 0.0;
+      break;
+      case br:
+	mot.linechoice = 0.15;
+      break;
+    }
+     mot.linechoice = lineType;
      return 0;
    }
    else
@@ -566,19 +690,17 @@ int followLine2(double dist, double speed,int time){
 /* calculate the values for linesensor to be besween 0 and 1
 */
 void lineCalibration(int lineSensor[]){
-  double a[] = {34.3337, 42.0388, 44.5722, 48.4740, 45.9623, 36.3456, 42.8092, 36.2694};
-  double b[] = {57.1471, 56.9804, 63.2451, 61.3529, 60.9608, 61.0294, 60.9216, 60.4902};
+  //data for the smr robot
+  //double a[] = {52.0733, 33.5055, 109.6757, 36.5417, 38.1459,35.9391, 36.0485, 31.3501};
+  //double b[] = {57.6863, 53.7157, 71.8627, 53.8333, 53.9118, 53.6667, 54.4804, 55.2941};
+  //data for the simulater
+  double a[] = {170, 170, 170, 170, 170, 170, 170, 170};
+  double b[] = {85, 85, 85, 85, 85, 85, 85, 85};
   int i;
   for (i = 0; i < lineSensorSize; i++) {
     lineSensorCal[i] = (lineSensor[i]-b[i])/a[i];
   }
 }
-
-void irCalibration()
-{
-
-}
-
 /*find the smalles value of the line sensor
 */
 double minLineSensor(double calLineSensor[]) {
@@ -587,8 +709,8 @@ double minLineSensor(double calLineSensor[]) {
   //find the mimimum in the array
   int i;
   for (i = 1 ; i < lineSensorSize ; i++ ) {
-      if ( calLineSensor[i] < minimum ) {
-         minimum = calLineSensor[i];
+      if ( (1-calLineSensor[i]) < minimum ) {
+         minimum = (1-calLineSensor[i]);
          index = i;
       }
   }
@@ -602,10 +724,35 @@ double followLine(motiontype *p) {
   p->LineSensorIndex = minLineSensor(lineSensorCal);
   double e = fabs(p->lineSensorOld) - fabs(lineSensorCal[p->LineSensorIndex]);
   p->lineSensorOld = lineSensorCal[p->LineSensorIndex];
-  double kp = 0.04;
-  double ki = 0.01;
+  double kp = 0.16;
+  double ki = 0.04;
   iVal = iVal + e*ki;
   return kp*(e + iVal);
+
+}
+
+float followLineCenterGB() {
+  int i; 
+  double topSum = 0, bottomSum = 0;
+  
+  lineCalibration(linesensor->data);
+  for(i = 1; i < 9; i++) {
+    topSum = topSum + i * (1-lineSensorCal[i-1]);
+    bottomSum = bottomSum + (1-lineSensorCal[i-1]);
+  }
+  return topSum/bottomSum;
+
+}
+
+float followLineCenterGW() {
+  int i, topSum = 0, bottomSum = 0;
+  
+  lineCalibration(linesensor->data);
+  for(i = 1; i < 9; i++) {
+    topSum = topSum + i * (lineSensorCal[i-1]);
+    bottomSum = bottomSum + (lineSensorCal[i-1]);
+  }
+  return topSum/bottomSum;
 
 }
 
@@ -622,22 +769,6 @@ int turn(double angle, double speed,int time){
      return mot.finished;
 }
 
-void followWall(double speed, int time, int con) 
-{
-  if(time == 0) 
-  {
-    mot.speedcmd = speed; 
-    mot.cmd = mot_followWall;
-    mot.condition = con;
-    return 0;
-  }
-  else 
-  {
-    return mot.finished;
-  }
-}
-
-
 
 void sm_update(smtype *p){
   if (p->state!=p->oldstate){
@@ -647,147 +778,4 @@ void sm_update(smtype *p){
    else {
      p->time++;
    }
-}
-
-void driveFwd(motiontype *p) 
-{
-    double speed = 0;
-    double maxSpeed = sqrt(2*acceleration*(p->dist - ((p->right_pos+p->left_pos)/2- p->startpos)));
-    
-    if(p->motorspeed_l < p->speedcmd) 
-    {
-	speed = p->motorspeed_l + acceleration;
-    }
-    if(currentSpeed > maxSpeed) 
-    {
-	speed = maxSpeed;
-    }
-  
-   p->motorspeed_l = speed;
-   p->motorspeed_r = speed;
-}
-
-void driveTurn(motiontype *p, int direction) 
-{
-  double speed;
-  double static iVal;
-  double e = fabs(p->angle) - fabs(odo.turnOrientation);
-  double kp = 0.04;
-  double ki = 0.01;
-  
-  iVal = iVal + e*ki;
-  speed = kp*(e + iVal);
-  
-  
-  if (direction == dir_LEFT){
-    p->motorspeed_l = 0;
-    
-    if (fabs(odo.turnOrientation) < fabs(p->angle))
-    {
-	p->motorspeed_r = speed;
-	p->motorspeed_l = speed * -1;
-    }
-    else 
-    {
-      p->motorspeed_r = 0;
-      p->motorspeed_l = 0;
-      p->finished = 1;
-      odo.turnOrientation = 0;
-    }
-  }
-  else if (direction == dir_RIGHT) 
-  {
-    p->motorspeed_r=0;
-    if (fabs(odo.turnOrientation) < fabs(p->angle))
-    {
-	p->motorspeed_l = speed;
-	p->motorspeed_r = speed*-1;
-    }
-    else 
-    {
-      p->motorspeed_r=0;
-      p->motorspeed_l=0;
-      p->finished=1;
-      odo.turnOrientation = 0;
-    }
-  }
-}
-
-void driveTurn(motiontype *p, double radius, int direction) 
-{
-    double centerDistance;
-    double turnTime;
-    double leftWheelRadius;
-    double rightWheelRadius;
-    double leftWheelDistance;
-    double rightWheelDistance;
-    
-    /*
-    double speed;
-    double static iVal;
-    double e = fabs(p->angle) - fabs(odo.turnOrientation);
-    double kp = 0.04;
-    double ki = 0.01;
-    
-    iVal = iVal + e*ki;
-    speed = kp*(e + iVal);
-    */
-    
-    centerDistance = radius * p->angle;
-    turnTime = centerDistance/p->speedcmd;
-    
-    if(direction == dir_LEFT) 
-    {
-	leftWheelRadius = radius-(odo.w/2);
-	rightWheelRadius = radius + (odo.w/2);
-	leftWheelDistance = leftWheelRadius * p->angle;
-	rightWheelDistance = rightWheelRadius * p->angle;
-	p->motorspeed_l = leftWheelDistance / turnTime;
-	p->motorspeed_r = rightWheelDistance / turnTime;
-    } 
-    else if( direction == dir_RIGHT)
-    {
-	leftWheelRadius = radius + (odo.w/2);
-	rightWheelRadius = radius - (odo.w/2);
-	leftWheelDistance = leftWheelRadius * p->angle;
-	rightWheelDistance = rightWheelRadius * p->angle;
-	p->motorspeed_l = leftWheelDistance / turnTime;
-	p->motorspeed_r = rightWheelDistance / turnTime;
-    }
-    
-  
-}
-
-void driveLine(motiontype *p) 
-{
-    double deltaSpeed = followLine(p);
-    if(p->LineSensorIndex < lineSensorSize/2) 
-    {
-      p->motorspeed_l = p->speedcmd + deltaSpeed;
-      p->motorspeed_r = p->speedcmd - deltaSpeed;
-    } 
-    else 
-    {
-      p->motorspeed_l = p->speedcmd - deltaSpeed;
-      p->motorspeed_r = p->speedcmd + deltaSpeed;
-    }
-}
-
-void driveWall(double distToWall, motiontype *p)
-{
-    if(irDistLeft > distToWall) 
-    {
-	p->motorspeed_l = p->speedcmd - deltaSpeed;
-	p->motorspeed_r = p->speedcmd + deltaSpeed;
-    } 
-    else if ( irDistLeft < distToWall)
-    {
-	p->motorspeed_l = p->speedcmd + deltaSpeed;
-	p->motorspeed_r = p->speedcmd - deltaSpeed;
-    } 
-    else
-    {
-      p->motorspeed_l = p->speedcmd;
-      p->motorspeed_r = p->speedcmd;
-    }
 }
