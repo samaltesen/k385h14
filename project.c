@@ -108,8 +108,8 @@ typedef struct{//input
 		double startpos, startpos2;
 		int condition;
 		double linechoice;
-    double lineSensorOld;
-    int LineSensorIndex;
+	      double lineSensorOld;
+	      int LineSensorIndex;
 	       }motiontype;
 
 enum {mot_stop=1,mot_move,mot_turn, mot_followLine};
