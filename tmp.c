@@ -19,7 +19,6 @@ void followWall(double speed, int time, int con)
   }
 }
 
-double irDistLeft;
 
 void driveWall(double distToWall, motiontype *p)
 {
@@ -46,34 +45,35 @@ void driveFwd(motiontype *p)
    p->motorspeed_r=currentSpeed;
 }
 
-void driveTurn(motiontype *p) 
+void driveTurn(motiontype *p, int direction) 
 {
-   if (p->angle>0){
-          p->motorspeed_l=0;
-	  if (fabs(odo.turnOrientation) < fabs(p->angle)){
-	      p->motorspeed_r=currentSpeed;
-	      p->motorspeed_l=currentSpeed*-1;
-	  }
-	  else {
-            p->motorspeed_r=0;
-	    p->motorspeed_l=0;
-            p->finished=1;
-	    odo.turnOrientation = 0;
-	  }
-	}
-	else {
-          p->motorspeed_r=0;
-	  if (fabs(odo.turnOrientation) < fabs(p->angle)){
-	      p->motorspeed_l=currentSpeed;
-	      p->motorspeed_r=currentSpeed*-1;
-	  }
-	  else {
-	    p->motorspeed_r=0;
-            p->motorspeed_l=0;
-            p->finished=1;
-	    odo.turnOrientation = 0;
-	  }
-	}
+   if (direction == dir_LEFT){
+      p->motorspeed_l=0;
+      if (fabs(odo.turnOrientation) < fabs(p->angle)){
+	  p->motorspeed_r=currentSpeed;
+	  p->motorspeed_l=currentSpeed*-1;
+      }
+      else {
+	p->motorspeed_r=0;
+	p->motorspeed_l=0;
+	p->finished=1;
+	odo.turnOrientation = 0;
+      }
+    }
+    else if (direction == dir_RIGHT) 
+    {
+      p->motorspeed_r=0;
+      if (fabs(odo.turnOrientation) < fabs(p->angle)){
+	  p->motorspeed_l=currentSpeed;
+	  p->motorspeed_r=currentSpeed*-1;
+      }
+      else {
+	p->motorspeed_r=0;
+	p->motorspeed_l=0;
+	p->finished=1;
+	odo.turnOrientation = 0;
+      }
+    }
 }
 
 enum{dir_LEFT, dir_RIGHT};
@@ -86,8 +86,6 @@ void driveTurn(motiontype *p, double radius, int direction)
     double rightWheelRadius;
     double leftWheelDistance;
     double rightWheelDistance;
-    double leftSpeed;
-    double rightSpeed;
     
     centerDistance = radius * p->angle;
     turnTime = centerDistance/p->speedcmd;
