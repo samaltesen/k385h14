@@ -102,7 +102,6 @@ typedef struct{//input
 		double speedcmd;
 		double dist;
 		double angle;
-		double radius;
 		double left_pos,right_pos;
 		// parameters
 		double w;
@@ -118,8 +117,8 @@ typedef struct{//input
 	       }motiontype;
 
 enum{dir_LEFT, dir_RIGHT};
-enum{mot_stop=1,mot_move,mot_turn, mot_turnR, mot_followLine, mot_followWall};
-enum {con_crossingBlackLine = 1, con_FindBlackLine, con_driveDist, con_laserScan, con_followWall, con_irScan, con_irFollowWallLeft, con_laserScanLeft};
+enum{mot_stop=1,mot_move,mot_turn, mot_followLine, mot_followWall};
+enum {con_crossingBlackLine = 1, con_FindBlackLine, con_driveDist, con_laserScan, con_followWall, con_irScan, con_irFollowWallLeft};
 enum {bl, bm, br};
 
 
@@ -129,7 +128,7 @@ void update_motcon(motiontype *p);
 
 void driveFwd(motiontype *p);
 void driveTurn(motiontype *p, int direction);
-void driveTurnR(motiontype *p, int direction);
+void driveTurnR(motiontype *p, int direction, double radius);
 void driveLine(motiontype *p);
 void driveWall(motiontype *p);
 
@@ -145,7 +144,6 @@ int followLine(int lineType, double speed,int time, double dist,int condition[])
 typedef struct{
                 int state,oldstate;
 		int time;
-		int newState;
 	       }smtype;
 
 void sm_update(smtype *p);
@@ -163,19 +161,19 @@ int lineSensorSize = 8;
 float datalog[10000][9];
 char datalog2[10000];
 float laserlog[10000][10];
-float LineFollowing[10000][3];
+float CenterOfGravity[10000];
 
-int newState = 0;
+
 int count = 0;
 FILE * missionState;
 
 enum {ms_init,ms_fwd,ms_turn,ms_followLine,ms_followWall,ms_end};
-enum {FW_INIT, FW_FINDGATE, FW_GOTOWALL, FW_MOVETOGATE, FW_FINISH, FW_TURN};
+enum {FW_INIT, FW_FINDGATE, FW_GOTOWALL};
 
 
 int main()
 {
-  int FWState = FW_GOTOWALL;
+  int FWState = FW_INIT;
   int running,arg,time=0;
   double dist=0,angle=0, speed=0;
 
@@ -312,11 +310,11 @@ while (running){
    switch (mission.state) {
      case ms_init:
        //mission.state=mot_followLine;
-	//printf("%s","vi er i mission.state= ms_init");
+	printf("%s","vi er i mission.state= ms_init");
        //n=4; dist=2;angle=-90.0/180*M_PI;
        angle=90.0/180*M_PI;
        dist = 0.1;
-       mission.state= ms_followWall;
+       mission.state= ms_followLine;
      break;
 
      case ms_fwd:
@@ -330,7 +328,7 @@ while (running){
 
      case ms_turn:
        if (turn(angle,0.3,mission.time, condition)){
-	   printf("Wrong mission state turn\n");
+
     	   mission.state=ms_end;
        }
        
@@ -341,7 +339,6 @@ while (running){
 	condition[0] = con_driveDist;
 	  //printf("%s","we are in the mot_followLine Case of mission \n");
 	if (followLine(bm,0.15,mission.time, dist, condition)) {
-	  printf("Wrong mission state followLine\n");
 	  mission.state=ms_end;
 	  printf("%s%f%s","distance to box: ",(-1*odo.yOld)+0.255+laserpar[4],"\n");
 	}
@@ -350,67 +347,34 @@ while (running){
      case ms_followWall:
 	
        switch(FWState) {
-
+	  
+	  case FW_INIT:
+	    FWState = FW_FINDGATE;
+	  break;
 	  
 	  case FW_FINDGATE:
 	    dist = 0.6;
 	    speed = 0.3;
-	    condition[0] = con_laserScanLeft;
+	    condition[0] = con_laserScan;
 	    if(followLine(bl, speed, mission.time, dist, condition)) 
 	    {
-	      mission.newState = 1;
-	      FWState = FW_MOVETOGATE;
-	    }
-	  break;
-	  
-	  case FW_MOVETOGATE:
-	    //printf("Mission time: %i, newState: %i\n", mission.time, newState);
-	    dist = 0.6;
-	    speed = 0.3;
-	    condition[0] = con_driveDist;
-	    if(fwd(dist, speed, mission.time, condition)) {
-	      mission.newState = 1;
-	      FWState = FW_TURN;
-	    }
-	    
-	  break;
-	  case FW_TURN:
-	    angle = 90.0/180*M_PI;
-	    speed = 0.3;
-	    condition[0] = 0;
-	    if (turn(angle, speed, mission.time, condition)){
-	      mission.newState = 1;
 	      FWState = FW_GOTOWALL;
 	    }
 	  break;
 	  
 	  case FW_GOTOWALL:
-	    dist = 0.2;
-	    speed = 0.3;
-	    condition[0] = con_irScan;
-	    if(fwd(dist, speed, mission.time, condition)) {
-	      printf("FW_FINISH\n");
-	      mission.newState = 1;
-	      FWState = FW_MOVETOGATE;
-	    }
-	  break;
-	    
-	  case FW_FINISH:
-	    printf("Wrong mission state FW_FINISH2\n");
-	      mission.state = ms_end;
-	      
+	  
 	  break;
 	}
        
      break;	
        
       case ms_end:
-	printf("ms_end\n");
 	mot.cmd=mot_stop;
 	running=0;
       break;
    }
-  //printf("Mission time: %i, newState: %i\n", mission.time, newState);
+
    //fprintf(missionState, "%i%s%f%s%f%s" ,count,";",mot.motorspeed_l,";",mot.motorspeed_r,"\n");
    datalog[count][0] = count;
    datalog[count][1] = odo.xOld;
@@ -466,8 +430,6 @@ for(i = 0; i < count; i++) {
   for(j = 1; j < 10; j++) {
     fprintf(missionState, "%s%f",";",laserlog[i][j]);
   }
-  //
-  fprintf(missionState,"%s%f%s%f%s%f",";",LineFollowing[i][0],";",LineFollowing[i][1],";",LineFollowing[i][2]);
   fprintf(missionState, "%s","\n");
 
 
@@ -591,7 +553,6 @@ if (p->cmd !=0){
 
     if(checkFlags(p)) 
     {
-      
       p->motorspeed_r=0;
       p->motorspeed_l=0;
       p->finished=1;
@@ -606,18 +567,16 @@ if (p->cmd !=0){
 	    break;
 	    
 	    case mot_move:
+	      
 		  driveFwd(p);
 	
 	    break;
 
 	    case mot_turn:
 
-		driveTurn(p, dir_LEFT);
+		driveTurnR(p, dir_LEFT, 0.5);
 	    
 
-	    break;
-	    case mot_turnR:
-		driveTurnR(p, dir_LEFT);
 	    break;
 
 	    case mot_followLine:
@@ -671,28 +630,17 @@ int checkFlags(motiontype *p) {
 	
 	case con_laserScan:
 	  for(i = 0; i < 10; i++) {
-	    //printf("i: %i laser: %f:, dist: %f\n", i, laserpar[i], p->dist);
 	    if(laserpar[i] < p->dist && laserpar[i] > 0) {
 	      return 1;
 	    }
 	  }
 	  return 0;
-	 break;
-	 
-	case con_laserScanLeft:
-	  //printf("laser: %f:, dist: %f\n", laserpar[i], p->dist);
-	  if(laserpar[0] < p->dist && laserpar[0] > 0) {
-	      return 1;
-	  }
-	  return 0;
-	
-	break;
+	  break;
 	  
 	case con_irScan:
 	  irCalibration(irsensor->data);
-	  for(i = 1; i < 4; i++) {
-	    //printf("Irdata[%d]: %f\n", i, Irdata[i]);
-	    if(Irdata[i] < p->dist && Irdata[i] > 0) {
+	  for(i = 0; i < 3; i++) {
+	    if(Irdata[i+1] < p->dist && Irdata[i+1] > 0) {
 	      return 1;
 	    }
 	  }
@@ -713,30 +661,25 @@ int checkFlags(motiontype *p) {
 
 
 int fwd(double dist, double speed,int time, int condition[]){
-  //printf("time: %i, dist: %f, condition: %i", time, dist, condition[0]);
-  printf("mot.finished %d\n", mot.finished);
+
   if (time==0){
      mot.speedcmd=speed;
      mot.cmd=mot_move;
      mot.dist=dist;
-     memcpy(mot.condition, condition, 5*sizeof(int));
+     memcpy(mot.condition, &condition, sizeof(mot.condition));
      return 0;
    }
    else
-   {
-     printf("Finished\n");
      return mot.finished;
-      
-   }
 }
 
 int followLine(int lineType, double speed,int time, double dist,int condition[]){
- // printf("time: %i\n", mission.time);
+  //printf("time=0");
   if (time==0){
 	//printf("time=0");
      mot.speedcmd=speed;
      mot.cmd=mot_followLine;
-     memcpy(mot.condition, condition, 5*sizeof(int));
+     memcpy(mot.condition, &condition, sizeof(mot.condition));
      mot.dist=dist;
      switch (lineType){
       case bl:
@@ -786,29 +729,12 @@ float followLineCenterGW() {
 
 int turn(double angle, double speed,int time, int condition[]){
 
-  //printf("time %i\, angle: %f n", time, angle);
-  if (time==0){
-    
-     mot.speedcmd=speed;
-     mot.cmd=mot_turn;
-     mot.angle=angle;
-     memcpy(mot.condition, condition, 5*sizeof(int));
-    //  printf("Angle: %f", mot.angle);
-     return 0;
-   }
-   else
-     return mot.finished;
-}
-
-int turnR(double angle, double radius, double speed,int time, int condition[]){
-
 
   if (time==0){
      mot.speedcmd=speed;
      mot.cmd=mot_turn;
      mot.angle=angle;
-     mot.radius = radius;
-     memcpy(mot.condition, condition, 5*sizeof(int));
+     memcpy(mot.condition, &condition, sizeof(mot.condition));
      return 0;
    }
    else
@@ -832,15 +758,13 @@ int followWall(double speed, int time, double dist, int condition[])
 }
 
 void sm_update(smtype *p){
-  if (p->state!=p->oldstate || p->newState){
+  if (p->state!=p->oldstate){
        p->time=0;
-       p->newState = 0;
        p->oldstate=p->state;
    }
    else {
      p->time++;
    }
-   
 }
 
 void driveFwd(motiontype *p) 
@@ -848,18 +772,16 @@ void driveFwd(motiontype *p)
     double speed = p->speedcmd;
     double maxSpeed = sqrt(2*acceleration*(p->dist - ((p->right_pos+p->left_pos)/2- p->startpos)));
     
-    printf("motorspeed_l: %f, speed: %f, maxSpeed: %f\n", p->motorspeed_l, speed, maxSpeed);
-    
     if(p->motorspeed_l < p->speedcmd) 
     {
 	speed = p->motorspeed_l + acceleration/100;
-	
     }
     if(speed > maxSpeed) 
     {
 	speed = maxSpeed;
     }
-    printf("speed2: %f\n", speed);
+    
+    printf("motorspeed_l: %f speed: %f, maxSpeed: %f\n", p->motorspeed_l, speed, maxSpeed);
     p->motorspeed_l = speed;
     p->motorspeed_r = speed;
 }
@@ -875,7 +797,7 @@ void driveTurn(motiontype *p, int direction)
   iVal = iVal + e*ki;
   speed = kp*(e + iVal);
   
-  //printf("Speed: %f, angle: %f, odoAngle: %f\n", speed, p->angle, odo.turnOrientation);
+  
   if (direction == dir_LEFT){
     p->motorspeed_l = 0;
     
@@ -910,7 +832,7 @@ void driveTurn(motiontype *p, int direction)
   }
 }
 
-void driveTurnR(motiontype *p, int direction) 
+void driveTurnR(motiontype *p, int direction, double radius) 
 {
     double centerDistance;
     double turnTime;
@@ -930,7 +852,7 @@ void driveTurnR(motiontype *p, int direction)
     speed = kp*(e + iVal);
     */
     
-    centerDistance = p-> radius * p->angle;
+    centerDistance = radius * p->angle;
     turnTime = centerDistance/p->speedcmd;
     
     if (fabs(odo.turnOrientation) < fabs(p->angle))
@@ -938,8 +860,8 @@ void driveTurnR(motiontype *p, int direction)
 	
       if(direction == dir_LEFT) 
       {
-	  leftWheelRadius = p-> radius-(odo.w/2);
-	  rightWheelRadius = p-> radius + (odo.w/2);
+	  leftWheelRadius = radius-(odo.w/2);
+	  rightWheelRadius = radius + (odo.w/2);
 	  leftWheelDistance = leftWheelRadius * p->angle;
 	  rightWheelDistance = rightWheelRadius * p->angle;
 	  p->motorspeed_l = leftWheelDistance / turnTime;
@@ -947,8 +869,8 @@ void driveTurnR(motiontype *p, int direction)
       } 
       else if( direction == dir_RIGHT)
       {
-	  leftWheelRadius = p-> radius + (odo.w/2);
-	  rightWheelRadius = p-> radius - (odo.w/2);
+	  leftWheelRadius = radius + (odo.w/2);
+	  rightWheelRadius = radius - (odo.w/2);
 	  leftWheelDistance = leftWheelRadius * p->angle;
 	  rightWheelDistance = rightWheelRadius * p->angle;
 	  p->motorspeed_l = leftWheelDistance / turnTime;
@@ -979,10 +901,6 @@ void driveLine(motiontype *p)
     double ki = 0.005;
     iVal = iVal + e*ki;
     double deltaSpeed = kp*(e + iVal);
-    
-    LineFollowing[count][0] = centerOfGravity;
-    LineFollowing[count][1] = setPoint;
-    LineFollowing[count][2] = deltaSpeed;
   
     //printf("CenterOfGravity: %f, deltaSpeed: %f, linechoice: %f, setPoint: %f\n", centerOfGravity, deltaSpeed, p->linechoice, setPoint);
     if(centerOfGravity < setPoint) 
@@ -1038,11 +956,11 @@ void driveWall(motiontype *p)
 
 void lineCalibration(int lineSensor[]){
   //data for the smr robot
-  //double a[] = {52.0733, 33.5055, 109.6757, 36.5417, 38.1459,35.9391, 36.0485, 31.3501};
-  //double b[] = {57.6863, 53.7157, 71.8627, 53.8333, 53.9118, 53.6667, 54.4804, 55.2941};
+  double a[] = {52.0733, 33.5055, 109.6757, 36.5417, 38.1459,35.9391, 36.0485, 31.3501};
+  double b[] = {57.6863, 53.7157, 71.8627, 53.8333, 53.9118, 53.6667, 54.4804, 55.2941};
   //data for the simulater
-  double a[] = {170, 170, 170, 170, 170, 170, 170, 170};
-  double b[] = {85, 85, 85, 85, 85, 85, 85, 85};
+  //double a[] = {170, 170, 170, 170, 170, 170, 170, 170};
+  //double b[] = {85, 85, 85, 85, 85, 85, 85, 85};
   int i;
   for (i = 0; i < lineSensorSize; i++) {
     lineSensorCal[i] = (lineSensor[i]-b[i])/a[i];
@@ -1066,9 +984,7 @@ double minLineSensor(double calLineSensor[]) {
 }
 
 void irCalibration(int irSensor[]){
-  //double k[5][2] = {{14.06, 72.91},{16.54, 89.73}, {16.68, 84.01}, {16.32, 71.89},{17.07, 53.32}};
-  
-  double k[5][2] = {{16.16, 75.29},{16.42, 72.65}, {13.13, 80.75}, {13.13, 80.75},{16.42, 72.65}};
+  double k[5][2] = {{14.06, 72.91},{16.54, 89.73}, {16.68, 84.01}, {16.32, 71.89},{17.07, 53.32}};
   int i;
   for(i = 0; i < 5; i++) {
     Irdata[i] = k[i][0]/(irSensor[i]-k[i][1]);
