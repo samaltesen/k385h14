@@ -121,7 +121,7 @@ typedef struct{//input
 
 enum{dir_LEFT, dir_RIGHT};
 enum{mot_stop=1,mot_move,mot_turn, mot_turnR, mot_followLine, mot_followWall};
-enum {con_crossingBlackLine = 1, con_FindBlackLine, con_FindWhiteLine, con_driveDist, con_laserScan, con_lasesL4, con_lasesL6, con_followWall, con_irScan, con_irFollowWallLeft, con_laserScanLeft};
+enum {con_crossingBlackLine = 1, con_FindBlackLine, con_FindWhiteLine, con_driveDist, con_laserScan, con_lasesL4, con_lasesL6, con_followWall, con_irScan, con_irFollowWallLeft, con_laserScanLeft, con_laserScanLeftFree};
 enum {bl, bm, br, wm};
 
 
@@ -173,11 +173,12 @@ int count = 0;
 FILE * missionState;
 
 enum {ms_init,ms_fwd,ms_turn,ms_distTobox,ms_FirstPart,ms_followWall, ms_WhiteLine, ms_GoHome,ms_end};
-enum {FW_INIT, FW_FINDGATE, FW_GOTOWALL, FW_MOVETOGATE, FW_FINISH, FW_TURN};
 enum {PB_INIT, PB_DISTTOBOX ,PB_GOTOBOX, PB_GOTOBOX2, PB_GOTOBOX3, PB_GOTOBOX4, PB_GOTOBOX5, PB_GOTOBOX6, PB_GOTOBOX7, PB_GOTOBOX8, PB_GOTOBOX9, PB_PUSHBOX, PB_GOTONEXTCHAL,
   PB_GOTONEXTCHAL1, PB_GOTONEXTCHAL2, PB_GOTONEXTCHAL3, PB_GOTONEXTCHAL4, PB_GOTONEXTCHAL5, PB_GOTONEXTCHAL6, PB_GOTONEXTCHAL7, PB_GOTONEXTCHAL8, PB_FINISH};
 enum{PW_INIT, PW_GOTOWHITELINE, PW_GOTOWHITELINE1, PW_GOTOWHITELINE2, PW_GOTOWHITELINE3, PW_GOTOWHITELINE4, PW_GOTOWHITELINE5, PW_GOTOWHITELINE6, PW_GOTOWHITELINE7, PW_FINISH};
 enum{GH_INIT,GH_HOME, GH_HOME1, GH_HOME2, GH_HOME3, GH_HOME4, GH_HOME5, GH_HOME6, GH_HOME7, GH_HOME8, GH_HOME9, GH_FINISH};
+enum {FW_INIT, FW_FINDGATE, FW_GOTOWALL, FW_MOVETOGATE, FW_FINISH, FW_TURNTOGATE, FW_TURNTOLINE, FW_GOTOLINE, FW_FWDSMALLDISTANCE, FW_TURNTOGATE2, FW_GOTTHROUGHGATE2,
+      FW_TURNTOWALL, FW_FWDSMALLDISTANCE2, FW_FOLLOWWALL, FW_FWDSMALLDISTANCE3, FW_TURNTOGATE3, FW_FOLLOWLINE, FW_TURNONLINE, FW_FWDSMALLDISTANCE4, FW_GOTOLINE2, FW_FOLLOWLINE2, FW_FWDSMALLDISTANCE5, FW_TURNONLINE2};
 
 
 
@@ -187,6 +188,7 @@ int main()
   int PBState = PB_INIT;
   int PWState = PW_INIT;
   int GHState = GH_INIT;
+
   int running,arg,time=0;
   double dist=0,angle=0, highSpeed=0.3, speed=0.2, lowSpeed=0.15;
 
@@ -320,7 +322,10 @@ while (running){
 */
    sm_update(&mission);
    int condition[5];
+   
    lineCalibration(linesensor->data);
+   irCalibration(irsensor->data);
+
    switch (mission.state) {
      case ms_init:
        //mission.state=mot_followLine;
@@ -337,13 +342,12 @@ while (running){
       
        condition[0] = con_driveDist;
 
-       if (fwd(dist,0.3,mission.time, condition))  mission.state=ms_turn;
+       if (fwd(dist,0.3,mission.time, condition))  mission.state=ms_end;
        //if (fwd(dist,0.4,mission.time))  mission.state=ms_end;
      break;
 
      case ms_turn:
        if (turn(angle,0.3,mission.time, condition, dir_LEFT)){
-
     	   mission.state=ms_end;
        }
        
@@ -563,6 +567,8 @@ while (running){
 
 	  
 	  case FW_FINDGATE:
+	    
+	    printf("####FOLLOW WALL STATE#### FW_FINDGATE\n");
 	    dist = 0.6;
 	    speed = 0.3;
 	    condition[0] = con_laserScanLeft;
@@ -574,18 +580,22 @@ while (running){
 	  break;
 	  
 	  case FW_MOVETOGATE:
+	    
+	    printf("####FOLLOW WALL STATE#### FW_MOVETOGATE\n");
 	    //printf("Mission time: %i, newState: %i\n", mission.time, newState);
 	    dist = 0.6;
 	    speed = 0.3;
 	    condition[0] = con_driveDist;
 	    if(fwd(dist, speed, mission.time, condition)) {
 	      mission.newState = 1;
-	      FWState = FW_TURN;
+	      FWState = FW_TURNTOGATE;
 	    }
 	    
 	  break;
-	  case FW_TURN:
-	    angle = 90.0/180*M_PI;
+	  case FW_TURNTOGATE:
+	    
+	    printf("####FOLLOW WALL STATE#### FW_TURNTOGATE\n");
+	    angle = 94.0/180*M_PI;
 	    speed = 0.3;
 	    condition[0] = 0;
 	    if (turn(angle, speed, mission.time, condition, dir_LEFT)){
@@ -595,19 +605,213 @@ while (running){
 	  break;
 	  
 	  case FW_GOTOWALL:
-	    dist = 0.2;
+	    
+	    printf("####FOLLOW WALL STATE#### FW_GOTOWALL\n");
+	    dist = 0.15;
 	    speed = 0.3;
-	    condition[0] = con_irScan;
+	    condition[0] = con_laserScan;
 	    if(fwd(dist, speed, mission.time, condition)) {
 	      mission.newState = 1;
-	      FWState = FW_FINISH;
+	      FWState = FW_TURNTOLINE;
+	    }
+	  break;
+	  
+	  case FW_TURNTOLINE:
+	    
+	    printf("####FOLLOW WALL STATE#### FW_TURNTOLINE\n");
+	    angle = 90.0/180*M_PI;
+	    speed = 0.3;
+	    condition[0] = 0;
+	    if(turn(angle, speed, mission.time, condition, dir_RIGHT)) {
+	      mission.newState  = 1;
+	      FWState = FW_GOTOLINE;
 	    }
 	    
+	  break;
+	  
+	  case FW_GOTOLINE:
+	    dist = 5;
+	    condition[0] = con_FindBlackLine;
+	    printf("####FOLLOW WALL STATE#### FW_GOTOLINE\n");
+	    if(fwd(dist, speed, mission.time, condition)) {
+	      mission.newState = 1;
+	      FWState = FW_FWDSMALLDISTANCE;
+	    }
+	  break;
+	  
+	  case FW_FWDSMALLDISTANCE:
+	    dist = 0.2;
+	    condition[0] = con_driveDist;
+	    printf("####FOLLOW WALL STATE#### FW_FWDSMALLDISTANCE\n");
+	    if(fwd(dist, speed, mission.time, condition)) {
+	      mission.newState = 1;
+	      FWState = FW_TURNTOGATE2;
+	    }
 	    
+	  break;
+	  case FW_TURNTOGATE2:
+	      printf("####FOLLOW WALL STATE#### FW_TURNTOGATE2\n");
+	      angle = 90.0/180*M_PI;
+	      speed = 0.3;
+	      condition[0] = 0;
+	      if (turn(angle, speed, mission.time, condition, dir_LEFT)){
+		mission.newState = 1;
+		FWState = FW_GOTTHROUGHGATE2;
+	      }
+	    break;
+	    
+	  case FW_GOTTHROUGHGATE2:
+	      printf("####FOLLOW WALL STATE#### FW_GOTTHROUGHGATE2\n");
+	      dist = 0.21;
+	      speed = 0.15;
+	      condition[0] = con_laserScanLeft;
+	      if(followLine(bl, speed, mission.time, dist, condition)) 
+	      {
+		mission.newState = 1;
+		FWState = FW_FWDSMALLDISTANCE2;
+	      }
+	  break;
+	  
+	  case FW_FWDSMALLDISTANCE2: 
+	      dist = 0.4;
+	      condition[0] = con_driveDist;
+	      printf("####FOLLOW WALL STATE#### FW_FWDSMALLDISTANCE\n");
+	      if(fwd(dist, speed, mission.time, condition)) {
+		mission.newState = 1;
+		FWState = FW_TURNTOWALL;
+	      }
+	      break;
+	  
+	  case FW_TURNTOWALL:
+	    printf("####FOLLOW WALL STATE#### FW_TURNTOWALL\n");
+	    angle = 90.0/180*M_PI;
+	    speed = 0.3;
+	    condition[0] = 0;
+	    if(turnR(angle, 0.25,  speed, mission.time, condition, dir_LEFT)) {
+	      mission.newState = 1;
+	      FWState = FW_FOLLOWWALL;
+	    }
+	    
+	  break;
+	  
+	  case FW_FOLLOWWALL:
+	    
+	    printf("####FOLLOW WALL STATE#### FW_FOLLOWWALL\n");
+	    speed = 0.2;
+	    dist = 0.8;
+	    condition[0] = con_laserScanLeftFree;
+	    if(followWall(speed, mission.time, dist, condition)) {
+	      mission.newState = 1;
+	      FWState = FW_FWDSMALLDISTANCE3;
+	    }
+	    
+	  break;
+	  
+	  case FW_FWDSMALLDISTANCE3: 
+	      dist = 0.4;
+	      condition[0] = con_driveDist;
+	      printf("####FOLLOW WALL STATE#### FW_FWDSMALLDISTANCE3\n");
+	      if(fwd(dist, speed, mission.time, condition)) {
+		mission.newState = 1;
+		FWState = FW_TURNTOGATE3;
+	      }
+	  break;
+	  
+	  case FW_TURNTOGATE3: 
+	    printf("####FOLLOW WALL STATE#### FW_TURNTOGATE3\n");
+	    angle = 90.0/180*M_PI;
+	    speed = 0.3;
+	    condition[0] = 0;
+	    if(turn(angle,speed, mission.time, condition, dir_LEFT)) {
+	      mission.newState = 1;
+	      FWState = FW_GOTOLINE2;
+	    }
+	    
+	    break;
+	     
+	    case FW_GOTOLINE2:
+	    dist = 5;
+	    speed = 0.3;
+	    condition[0] = con_FindBlackLine;
+	    printf("####FOLLOW WALL STATE#### FW_GOTOLINE2\n");
+	    if(fwd(dist, speed, mission.time, condition)) {
+	      mission.newState = 1;
+	      FWState = FW_FWDSMALLDISTANCE4;
+	    }
+	  break;
+	  
+	  case FW_FWDSMALLDISTANCE4: 
+	    dist = 0.4;
+	    condition[0] = con_driveDist;
+	    printf("####FOLLOW WALL STATE#### FW_FWDSMALLDISTANCE4\n");
+	    if(fwd(dist, speed, mission.time, condition)) {
+	      mission.newState = 1;
+	      FWState = FW_TURNONLINE;
+	    }
+	    
+	  break;
+	  case FW_TURNONLINE:
+	      printf("####FOLLOW WALL STATE#### FW_TURNONLINE\n");
+	      angle = 90.0/180*M_PI;
+	      speed = 0.3;
+	      condition[0] = 0;
+	      if (turn(angle, speed, mission.time, condition, dir_LEFT)){
+		mission.newState = 1;
+		FWState = FW_FOLLOWLINE;
+	      }
+	    break;
+	    
+	  case FW_FOLLOWLINE:
+	      printf("####FOLLOW WALL STATE#### FW_FOLLOWLINE\n");
+	      dist = 0.21;
+	      speed = 0.3;
+	      condition[0] = con_crossingBlackLine;
+	      if(followLine(bl, speed, mission.time, dist, condition)) 
+	      {
+		mission.newState = 1;
+		FWState = FW_FWDSMALLDISTANCE5;
+	      }
+	  break;
+	  case FW_FWDSMALLDISTANCE5: 
+	    dist = 0.2;
+	    condition[0] = con_driveDist;
+	    printf("####FOLLOW WALL STATE#### FW_FWDSMALLDISTANCE5\n");
+	    if(fwd(dist, speed, mission.time, condition)) {
+	      mission.newState = 1;
+	      FWState = FW_TURNONLINE2;
+	    }
+	    
+	  break;
+	  case FW_TURNONLINE2:
+	      printf("####FOLLOW WALL STATE#### FW_TURNONLINE2\n");
+	      angle = 90.0/180*M_PI;
+	      speed = 0.3;
+	      condition[0] = 0;
+	      if (turn(angle, speed, mission.time, condition, dir_LEFT)){
+		mission.newState = 1;
+		FWState = FW_FOLLOWLINE2;
+	      }
+	    break;
+	  
+	  
+	  case FW_FOLLOWLINE2:
+	      printf("####FOLLOW WALL STATE#### FW_FOLLOWLINE2\n");
+	      dist = 0.21;
+	      speed = 0.3;
+	      condition[0] = con_crossingBlackLine;
+	      if(followLine(bl, speed, mission.time, dist, condition)) 
+	      {
+		mission.newState = 1;
+		FWState = FW_FINISH;
+	      }
+	  break;
 	  case FW_FINISH:
-	      mission.state = ms_end;
+	      printf("####FOLLOW WALL STATE#### FW_FINISH\n");
+	      mission.state = ms_WhiteLine;
 	      
 	  break;
+	  
+	  
 	}
        
      break;
@@ -859,6 +1063,7 @@ void reset_odo(odotype * p)
   p->right_pos = p->left_pos = 0.0;
   p->right_enc_old = p->right_enc;
   p->left_enc_old = p->left_enc;
+
   p->xOld = -2;
   p->yOld = 0;
   p->orientationOld = 0;
@@ -936,8 +1141,13 @@ if (p->cmd !=0){
 	 }
          p->curcmd=mot_turn;
        break;
+<<<<<<< HEAD
        case mot_turnR:
 	 //printf("we are here");
+=======
+       
+       case mot_turnR:
+>>>>>>> origin/master
          if (p->angle > 0) {
 	    p->startpos=p->right_pos;
 	    p->startpos2 = p->left_pos;
@@ -966,7 +1176,6 @@ if (p->cmd !=0){
 
     if(checkFlags(p)) 
     {
-      
       p->motorspeed_r=0;
       p->motorspeed_l=0;
       p->finished=1;
@@ -1021,6 +1230,7 @@ int checkFlags(motiontype *p) {
 	case 0:
 	  
 	break;
+	
 	case con_crossingBlackLine:
 	  for(i = 0; i < 8; i++) {
 	    if((1-lineSensorCal[i]) < 0.8) {
@@ -1032,6 +1242,7 @@ int checkFlags(motiontype *p) {
 	  
 	case con_FindBlackLine:
 	  
+<<<<<<< HEAD
 	  for(i = 0; i < 8; i++) {
 	    //printf("lineSensorCal is: %f",(1-lineSensorCal[i]));
 	    if(((1-lineSensorCal[i])) > 0.8) {
@@ -1046,6 +1257,12 @@ int checkFlags(motiontype *p) {
 	  //  (lineSensorCal[6]),(lineSensorCal[7]));
 	  for(i = 0; i < 8; i++) {
 	    if(((lineSensorCal[i])) > 0.8) {
+=======
+	  for(i = 0; i < 8; i++) {
+	    //printf("lineSensorCal is: %f",(1-lineSensorCal[i]));
+	    if(((1-lineSensorCal[i])) > 0.8) {
+	      //printf("lineSensor value[%d]: %f\n", i, 1-lineSensorCal[i]);
+>>>>>>> origin/master
 	      return 1;
 	    }
 	  }
@@ -1053,9 +1270,15 @@ int checkFlags(motiontype *p) {
 	break;
 	
 	case con_driveDist:
+<<<<<<< HEAD
 	  if(p->dist < 0) {
 	    //printf("newPos %f and oldPos &f \n",((p->right_pos+p->left_pos)/2- p->startpos),(p->dist- 0.001));
 	    if((p->right_pos+p->left_pos)/2- p->startpos < p->dist- 0.001) {
+=======
+	  
+	  if((p->right_pos+p->left_pos)/2- p->startpos > p->dist- 0.001) {
+	    printf("Distance: %f", (p->right_pos+p->left_pos)/2- p->startpos);
+>>>>>>> origin/master
 	    return 1;
 	    }
 	    return 0;
@@ -1093,14 +1316,22 @@ int checkFlags(motiontype *p) {
 	break;
 	 
 	case con_laserScanLeft:
-	  //printf("laser: %f:, dist: %f\n", laserpar[i], p->dist);
+	  printf("laser: %f:, dist: %f\n", laserpar[i], p->dist);
 	  if(laserpar[0] < p->dist && laserpar[0] > 0) {
 	      return 1;
 	  }
 	  return 0;
 	
 	break;
-	  
+	
+	case con_laserScanLeftFree:
+	  printf("laser: %f:, dist: %f\n", laserpar[i], p->dist);
+	  if(laserpar[0] > p->dist && laserpar[0] > 0) {
+	      return 1;
+	  }
+	  return 0;
+	
+	break;
 	case con_irScan:
 	  irCalibration(irsensor->data);
 	  for(i = 0; i < 3; i++) {
@@ -1126,6 +1357,10 @@ int checkFlags(motiontype *p) {
 
 int fwd(double dist, double speed,int time, int condition[]){
   //printf("time: %i, dist: %f, condition: %i", time, dist, condition[0]);
+<<<<<<< HEAD
+=======
+  //printf("mot.finished %d\n", mot.finished);
+>>>>>>> origin/master
   if (time==0){
      mot.speedcmd=speed;
      mot.cmd=mot_move;
@@ -1134,6 +1369,11 @@ int fwd(double dist, double speed,int time, int condition[]){
      return 0;
    }
    else
+<<<<<<< HEAD
+=======
+   {
+     //printf("Finished\n");
+>>>>>>> origin/master
      return mot.finished;
 }
 
@@ -1173,6 +1413,10 @@ float followLineCenterGB() {
   int i; 
   double topSum = 0, bottomSum = 0.0001;
   
+<<<<<<< HEAD
+=======
+  //lineCalibration(linesensor->data);
+>>>>>>> origin/master
   for(i = 1; i < 9; i++) {
     topSum = topSum + i * (1-lineSensorCal[i-1]);
     bottomSum = bottomSum + (1-lineSensorCal[i-1]);
@@ -1182,10 +1426,16 @@ float followLineCenterGB() {
 }
 
 float followLineCenterGW() {
+<<<<<<< HEAD
   int i;
   double topSum = 0.0, bottomSum = 0.0001;
   /*printf("lineSensorCal is: %f %f %f %f %f %f %f %f",(lineSensorCal[0]),(lineSensorCal[1]),(lineSensorCal[2]),(lineSensorCal[3]),(lineSensorCal[4]),(lineSensorCal[5]),
     (lineSensorCal[6]),(lineSensorCal[7]));*/
+=======
+  int i, topSum = 0, bottomSum = 0;
+  
+  //lineCalibration(linesensor->data);
+>>>>>>> origin/master
   for(i = 1; i < 9; i++) {
     topSum = topSum + i * (lineSensorCal[i-1]);
     bottomSum = bottomSum + (lineSensorCal[i-1]);
@@ -1216,6 +1466,10 @@ int turnR(double angle, double radius, double speed,int time, int condition[], i
 
 
   if (time==0){
+<<<<<<< HEAD
+=======
+    
+>>>>>>> origin/master
      odo.turnOrientation = 0;
      mot.direction = direction;
      mot.speedcmd=speed;
@@ -1258,6 +1512,7 @@ void sm_update(smtype *p){
 }
 
 void driveFwd(motiontype *p) 
+<<<<<<< HEAD
 {	
     double speed;
     if(p->dist < 0) {
@@ -1267,16 +1522,28 @@ void driveFwd(motiontype *p)
     }
     
     double maxSpeed = sqrt(2*acceleration*(p->dist - ((p->right_pos+p->left_pos)/2- p->startpos)));
+=======
+{
+    double speed = p->speedcmd;
+    //double maxSpeed = sqrt(2*acceleration*(p->dist - ((p->right_pos+p->left_pos)/2- p->startpos)));
+    
+    //printf("motorspeed_l: %f, speed: %f, maxSpeed: %f\n", p->motorspeed_l, speed, maxSpeed);
+>>>>>>> origin/master
     
     if((p->dist > 0 && p->motorspeed_l < p->speedcmd) || (p->dist < 0 && p->motorspeed_l < -p->speedcmd)) 
     {
 	speed = p->motorspeed_l + acceleration/100;
     }
-    if(speed > maxSpeed) 
+    /*if(speed > maxSpeed) 
     {
 	speed = maxSpeed;
+<<<<<<< HEAD
     }
     
+=======
+    }*/
+    //printf("speed2: %f\n", speed);
+>>>>>>> origin/master
     p->motorspeed_l = speed;
     p->motorspeed_r = speed;
 }
@@ -1292,7 +1559,11 @@ void driveTurn(motiontype *p)
   iVal = iVal + e*ki;
   speed = kp*(e + iVal);
   
+<<<<<<< HEAD
   //printf("Speed: %f, angle: %f, odoAngle: %f\n", speed, p->angle, odo.turnOrientation);
+=======
+  printf("Speed: %f, angle: %f, odoAngle: %f\n", speed, p->angle, odo.turnOrientation);
+>>>>>>> origin/master
   if (p->direction == dir_LEFT){
     p->motorspeed_l = 0;
     
@@ -1306,7 +1577,6 @@ void driveTurn(motiontype *p)
       p->motorspeed_r = 0;
       p->motorspeed_l = 0;
       p->finished = 1;
-      odo.turnOrientation = 0;
     }
   }
   else if (p->direction == dir_RIGHT) 
@@ -1322,7 +1592,6 @@ void driveTurn(motiontype *p)
       p->motorspeed_r=0;
       p->motorspeed_l=0;
       p->finished=1;
-      odo.turnOrientation = 0;
     }
   }
 }
@@ -1361,7 +1630,11 @@ void driveTurnR(motiontype *p)
 	  p->motorspeed_l = leftWheelDistance / turnTime;
 	  p->motorspeed_r = rightWheelDistance / turnTime;
       } 
+<<<<<<< HEAD
       else if(p->direction == dir_RIGHT)
+=======
+      else if( p->direction == dir_RIGHT)
+>>>>>>> origin/master
       {
 	  leftWheelRadius = p-> radius + (odo.w/2);
 	  rightWheelRadius = p-> radius - (odo.w/2);
@@ -1427,7 +1700,7 @@ void driveLine(motiontype *p)
 
 void driveWall(motiontype *p)
 {
-    double setPoint = 0.1;
+    double setPoint = 0.2;
     double static iVal;
     double e = fabs(Irdata[0] - setPoint);
     double kp = 0.06;
@@ -1435,17 +1708,17 @@ void driveWall(motiontype *p)
     iVal = iVal + e*ki;
     double deltaSpeed = kp*(e + iVal);
   
-    //printf("error: %f, deltaspeed: %f, irdata: %f, setPoint: %f", e, deltaSpeed, Irdata[0], setPoint);
+    printf("error: %f, deltaspeed: %f, irdata: %f, setPoint: %f", e, deltaSpeed, Irdata[0], setPoint);
     
     if(Irdata[0] > setPoint) 
     {
-	//printf(" turning left\n");
+	printf(" turning left\n");
 	p->motorspeed_l = p->speedcmd - deltaSpeed;
 	p->motorspeed_r = p->speedcmd + deltaSpeed;
     } 
     else if (Irdata[0] < setPoint)
     {
-	//printf(" turning right\n");
+	printf(" turning right\n");
 	p->motorspeed_l = p->speedcmd + deltaSpeed;
 	p->motorspeed_r = p->speedcmd - deltaSpeed;
     } 
