@@ -173,8 +173,8 @@ int count = 0;
 FILE * missionState;
 
 enum {ms_init,ms_fwd,ms_turn,ms_distTobox,ms_FirstPart,ms_followWall, ms_WhiteLine, ms_GoHome,ms_end};
-enum {PB_INIT, PB_DISTTOBOX ,PB_GOTOBOX, PB_GOTOBOX2, PB_GOTOBOX3, PB_GOTOBOX4, PB_GOTOBOX5, PB_GOTOBOX6, PB_GOTOBOX7, PB_GOTOBOX8, PB_GOTOBOX9, PB_PUSHBOX, PB_GOTONEXTCHAL,
-  PB_GOTONEXTCHAL1, PB_GOTONEXTCHAL2, PB_GOTONEXTCHAL3, PB_GOTONEXTCHAL4, PB_GOTONEXTCHAL5, PB_GOTONEXTCHAL6, PB_GOTONEXTCHAL7, PB_GOTONEXTCHAL8, PB_FINISH};
+enum {PB_INIT, PB_DISTTOBOX ,PB_GOTOBOX, PB_GOTOBOX2, PB_GOTOBOX3, PB_GOTOBOXTIF, PB_GOTOBOX4, PB_GOTOBOX5, PB_GOTOBOX6, PB_GOTOBOX7, PB_GOTOBOX8, PB_GOTOBOX9, PB_PUSHBOX, PB_GOTONEXTCHAL,
+  PB_GOTONEXTCHAL1, PB_GOTONEXTCHAL2, PB_GOTONEXTCHAL3, PB_GOTONEXTCHAL4, PB_GOTONEXTCHAL5, PB_GOTONEXTCHAL6, PB_GOTONEXTCHAL7, PB_GOTONEXTCHAL8, PB_FINISH, PB_GOTOBOX22};
 enum{PW_INIT, PW_GOTOWHITELINE, PW_GOTOWHITELINE1, PW_GOTOWHITELINE2, PW_GOTOWHITELINE3, PW_GOTOWHITELINE4, PW_GOTOWHITELINE5, PW_GOTOWHITELINE6, PW_GOTOWHITELINE7, PW_FINISH};
 enum{GH_INIT,GH_HOME, GH_HOME1, GH_HOME2, GH_HOME3, GH_HOME4, GH_HOME5, GH_HOME6, GH_HOME7, GH_HOME8, GH_HOME9, GH_FINISH};
 enum {FW_INIT, FW_FINDGATE, FW_GOTOWALL, FW_MOVETOGATE, FW_FINISH, FW_TURNTOGATE, FW_TURNTOLINE, FW_GOTOLINE, FW_FWDSMALLDISTANCE, FW_TURNTOGATE2, FW_GOTTHROUGHGATE2,
@@ -190,7 +190,7 @@ int main()
   int GHState = GH_INIT;
 
   int running,arg,time=0;
-  double dist=0,angle=0, highSpeed=0.3, speed=0.2, lowSpeed=0.15;
+  double dist=0,angle=0, speed=0.2, lowSpeed=0.15;
 
   /* Establish connection to robot sensors and actuators.
    */
@@ -334,7 +334,7 @@ while (running){
        angle=90.0/180*M_PI;
        dist = 0.1;
        //mission.state= ms_distTobox;
-       mission.state= ms_GoHome;
+       mission.state= ms_distTobox;
      break;
 
      case ms_fwd:
@@ -546,7 +546,7 @@ while (running){
 	  case PB_GOTONEXTCHAL8:
 	   //printf("%s","i am in PB_GOTOBOX4");
 	   condition[0] = con_crossingBlackLine; condition[1] = 0; condition[2] = 0; condition[3] = 0; condition[4] = 0;
-	   if (followLine(bm,speed,mission.time, dist, condition)) {
+	   if (followLine(br,speed,mission.time, dist, condition)) {
 	     mission.newState = 1;
 	     PBState=PB_FINISH;
 	   }
@@ -554,7 +554,7 @@ while (running){
 	 
 	 
 	 case PB_FINISH:
-	   mission.state=ms_end;
+	   mission.state=ms_followWall;
 	 break;
 	 
 	 
@@ -861,7 +861,7 @@ while (running){
 	 break;
 	 
 	  case PW_FINISH:
-	    mission.state = ms_end;
+	    mission.state = ms_GoHome;
 	  break;
 	}
 	 
@@ -1218,22 +1218,34 @@ if (p->cmd !=0){
 
 int checkFlags(motiontype *p) {
     
-    int i;
-    int j;
+      int j = 0;
     for(j = 0; j < 5; j++) {
-      
+      int i = 0;
+      int counter = 0; 
       switch (p->condition[j]){
 	case 0:
 	  
 	break;
 	
 	case con_crossingBlackLine:
-	  for(i = 0; i < 8; i++) {
-	    if((1-lineSensorCal[i]) < 0.8) {
-	      return 0;
+	  for(i = 0; i < 8; i++) 
+	  {
+
+	    if((1-lineSensorCal[i]) > 0.8) 
+	    {
+	      counter++;
 	    }
 	  }
-	  return 1;
+	  
+	  if(counter > 6) 
+	  {
+	    
+	    return 1;
+	  } 
+	  else 
+	  {
+	    return 0;
+	  }
 	break;
 	  
 	case con_FindBlackLine:
@@ -1242,10 +1254,18 @@ int checkFlags(motiontype *p) {
 	  for(i = 0; i < 8; i++) {
 	    //printf("lineSensorCal is: %f",(1-lineSensorCal[i]));
 	    if(((1-lineSensorCal[i])) > 0.8) {
-	      return 1;
+	      counter++;
 	    }
 	  }
-	  return 0;
+	  
+	  if(counter > 1) 
+	  {
+	    return 1;
+	  }
+	  else
+	  {
+	    return 0;
+	  }
 	break;
 	
 	case con_FindWhiteLine:
@@ -1305,7 +1325,7 @@ int checkFlags(motiontype *p) {
 	break;
 	 
 	case con_laserScanLeft:
-	  printf("laser: %f:, dist: %f\n", laserpar[i], p->dist);
+	  //printf("laser: %f:, dist: %f\n", laserpar[i], p->dist);
 	  if(laserpar[0] < p->dist && laserpar[0] > 0) {
 	      return 1;
 	  }
@@ -1314,7 +1334,7 @@ int checkFlags(motiontype *p) {
 	break;
 	
 	case con_laserScanLeftFree:
-	  printf("laser: %f:, dist: %f\n", laserpar[i], p->dist);
+	  //printf("laser: %f:, dist: %f\n", laserpar[i], p->dist);
 	  if(laserpar[0] > p->dist && laserpar[0] > 0) {
 	      return 1;
 	  }
@@ -1491,8 +1511,6 @@ void driveFwd(motiontype *p)
     }else {
       speed = p->speedcmd;
     }
-    
-    double speed = p->speedcmd;
     
     if((p->dist > 0 && p->motorspeed_l < p->speedcmd) || (p->dist < 0 && p->motorspeed_l < -p->speedcmd)) 
     {
