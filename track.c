@@ -1141,32 +1141,28 @@ if (p->cmd !=0){
 	 }
          p->curcmd=mot_turn;
        break;
-<<<<<<< HEAD
-       case mot_turnR:
-	 //printf("we are here");
-=======
+
        
        case mot_turnR:
->>>>>>> origin/master
          if (p->angle > 0) {
 	    p->startpos=p->right_pos;
 	    p->startpos2 = p->left_pos;
-	 }
-	 else {
-	    p->startpos=p->left_pos;
-	    p->startpos2 = p->right_pos;
-	 }
-         p->curcmd=mot_turnR;
+		 }
+		 else {
+		    p->startpos=p->left_pos;
+		    p->startpos2 = p->right_pos;
+		 }
+	         p->curcmd=mot_turnR;
        break;
 
       case mot_followLine:
-	 p->startpos=(p->left_pos+p->right_pos)/2;
+		 p->startpos=(p->left_pos+p->right_pos)/2;
          p->curcmd=mot_followLine;
       break;
       
       case mot_followWall:
-	p->startpos=(p->left_pos+p->right_pos)/2;
-	p->curcmd=mot_followWall;
+		p->startpos=(p->left_pos+p->right_pos)/2;
+		p->curcmd=mot_followWall;
       break;
      }
 
@@ -1242,7 +1238,7 @@ int checkFlags(motiontype *p) {
 	  
 	case con_FindBlackLine:
 	  
-<<<<<<< HEAD
+
 	  for(i = 0; i < 8; i++) {
 	    //printf("lineSensorCal is: %f",(1-lineSensorCal[i]));
 	    if(((1-lineSensorCal[i])) > 0.8) {
@@ -1257,12 +1253,6 @@ int checkFlags(motiontype *p) {
 	  //  (lineSensorCal[6]),(lineSensorCal[7]));
 	  for(i = 0; i < 8; i++) {
 	    if(((lineSensorCal[i])) > 0.8) {
-=======
-	  for(i = 0; i < 8; i++) {
-	    //printf("lineSensorCal is: %f",(1-lineSensorCal[i]));
-	    if(((1-lineSensorCal[i])) > 0.8) {
-	      //printf("lineSensor value[%d]: %f\n", i, 1-lineSensorCal[i]);
->>>>>>> origin/master
 	      return 1;
 	    }
 	  }
@@ -1270,21 +1260,20 @@ int checkFlags(motiontype *p) {
 	break;
 	
 	case con_driveDist:
-<<<<<<< HEAD
-	  if(p->dist < 0) {
+	  if(p->dist < 0) 
+	  {
 	    //printf("newPos %f and oldPos &f \n",((p->right_pos+p->left_pos)/2- p->startpos),(p->dist- 0.001));
-	    if((p->right_pos+p->left_pos)/2- p->startpos < p->dist- 0.001) {
-=======
-	  
-	  if((p->right_pos+p->left_pos)/2- p->startpos > p->dist- 0.001) {
-	    printf("Distance: %f", (p->right_pos+p->left_pos)/2- p->startpos);
->>>>>>> origin/master
-	    return 1;
+	    if((p->right_pos+p->left_pos)/2- p->startpos < p->dist- 0.001) 
+	    {
+	    	return 1;
 	    }
 	    return 0;
-	  }else {
-	    if((p->right_pos+p->left_pos)/2- p->startpos > p->dist- 0.001) {
-	    return 1;
+	  } 
+	  else 
+	  {
+	    if((p->right_pos+p->left_pos)/2- p->startpos > p->dist- 0.001) 
+	    {
+	    	return 1;
 	    }
 	    return 0;
 	  }
@@ -1357,10 +1346,8 @@ int checkFlags(motiontype *p) {
 
 int fwd(double dist, double speed,int time, int condition[]){
   //printf("time: %i, dist: %f, condition: %i", time, dist, condition[0]);
-<<<<<<< HEAD
-=======
-  //printf("mot.finished %d\n", mot.finished);
->>>>>>> origin/master
+
+
   if (time==0){
      mot.speedcmd=speed;
      mot.cmd=mot_move;
@@ -1369,12 +1356,9 @@ int fwd(double dist, double speed,int time, int condition[]){
      return 0;
    }
    else
-<<<<<<< HEAD
-=======
    {
-     //printf("Finished\n");
->>>>>>> origin/master
      return mot.finished;
+	}
 }
 
 int followLine(int lineType, double speed,int time, double dist,int condition[]){
@@ -1412,11 +1396,7 @@ int followLine(int lineType, double speed,int time, double dist,int condition[])
 float followLineCenterGB() {
   int i; 
   double topSum = 0, bottomSum = 0.0001;
-  
-<<<<<<< HEAD
-=======
-  //lineCalibration(linesensor->data);
->>>>>>> origin/master
+ 
   for(i = 1; i < 9; i++) {
     topSum = topSum + i * (1-lineSensorCal[i-1]);
     bottomSum = bottomSum + (1-lineSensorCal[i-1]);
@@ -1426,16 +1406,12 @@ float followLineCenterGB() {
 }
 
 float followLineCenterGW() {
-<<<<<<< HEAD
+
   int i;
   double topSum = 0.0, bottomSum = 0.0001;
   /*printf("lineSensorCal is: %f %f %f %f %f %f %f %f",(lineSensorCal[0]),(lineSensorCal[1]),(lineSensorCal[2]),(lineSensorCal[3]),(lineSensorCal[4]),(lineSensorCal[5]),
     (lineSensorCal[6]),(lineSensorCal[7]));*/
-=======
-  int i, topSum = 0, bottomSum = 0;
-  
-  //lineCalibration(linesensor->data);
->>>>>>> origin/master
+
   for(i = 1; i < 9; i++) {
     topSum = topSum + i * (lineSensorCal[i-1]);
     bottomSum = bottomSum + (lineSensorCal[i-1]);
@@ -1466,10 +1442,6 @@ int turnR(double angle, double radius, double speed,int time, int condition[], i
 
 
   if (time==0){
-<<<<<<< HEAD
-=======
-    
->>>>>>> origin/master
      odo.turnOrientation = 0;
      mot.direction = direction;
      mot.speedcmd=speed;
@@ -1511,39 +1483,22 @@ void sm_update(smtype *p){
    
 }
 
-void driveFwd(motiontype *p) 
-<<<<<<< HEAD
-{	
-    double speed;
+void driveFwd(motiontype *p)
+{
+	double speed;
     if(p->dist < 0) {
       speed = -p->speedcmd;
     }else {
       speed = p->speedcmd;
     }
     
-    double maxSpeed = sqrt(2*acceleration*(p->dist - ((p->right_pos+p->left_pos)/2- p->startpos)));
-=======
-{
     double speed = p->speedcmd;
-    //double maxSpeed = sqrt(2*acceleration*(p->dist - ((p->right_pos+p->left_pos)/2- p->startpos)));
-    
-    //printf("motorspeed_l: %f, speed: %f, maxSpeed: %f\n", p->motorspeed_l, speed, maxSpeed);
->>>>>>> origin/master
     
     if((p->dist > 0 && p->motorspeed_l < p->speedcmd) || (p->dist < 0 && p->motorspeed_l < -p->speedcmd)) 
     {
 	speed = p->motorspeed_l + acceleration/100;
     }
-    /*if(speed > maxSpeed) 
-    {
-	speed = maxSpeed;
-<<<<<<< HEAD
-    }
-    
-=======
-    }*/
-    //printf("speed2: %f\n", speed);
->>>>>>> origin/master
+
     p->motorspeed_l = speed;
     p->motorspeed_r = speed;
 }
@@ -1559,11 +1514,8 @@ void driveTurn(motiontype *p)
   iVal = iVal + e*ki;
   speed = kp*(e + iVal);
   
-<<<<<<< HEAD
   //printf("Speed: %f, angle: %f, odoAngle: %f\n", speed, p->angle, odo.turnOrientation);
-=======
-  printf("Speed: %f, angle: %f, odoAngle: %f\n", speed, p->angle, odo.turnOrientation);
->>>>>>> origin/master
+
   if (p->direction == dir_LEFT){
     p->motorspeed_l = 0;
     
@@ -1630,11 +1582,7 @@ void driveTurnR(motiontype *p)
 	  p->motorspeed_l = leftWheelDistance / turnTime;
 	  p->motorspeed_r = rightWheelDistance / turnTime;
       } 
-<<<<<<< HEAD
       else if(p->direction == dir_RIGHT)
-=======
-      else if( p->direction == dir_RIGHT)
->>>>>>> origin/master
       {
 	  leftWheelRadius = p-> radius + (odo.w/2);
 	  rightWheelRadius = p-> radius - (odo.w/2);
